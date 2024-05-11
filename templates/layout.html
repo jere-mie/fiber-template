@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Fiber Template</title>
+
+    <meta property="og:site_name" content="Go Fiber Template" />
+    <meta property="og:title" content="A Simple Web App Template Using Go Fiber" />
+    <meta property="og:description"
+        content="Download and use this template to quickly spin up a Go Fiber app with database and authentication support already set up!" />
+    <meta property="og:type" content="website" />
+
+    <link rel="shortcut icon" type="image/png" href="/static/img/favicon.ico" />
+
+    <!-- css -->
+    <link rel="stylesheet" href="/static/css/bootstrap.5.3.3.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/css/style.css">
+
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <img style="width: 60px;" src="/static/img/icon.png" alt="jere-mie logo">
+                Fiber Template</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/login">Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/register">Register</a>
+                    </li>
+            </div>
+        </div>
+    </nav>
+    <!-- Display flash messages -->
+    {% if Flashes %}
+        <div id="flash-messages">
+            {% for flash in Flashes %}
+                <div class="alert alert-{{ flash.category }}">
+                    {{ flash.message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
+    <div class="container mt-5">
+        {% block content %}
+        {% endblock %}    
+    </div>
+    <script src="/static/js/bootstrap.5.3.3.bundle.min.js"></script>
+</body>
+
+</html>
