@@ -62,10 +62,18 @@ func setupRoutes(app *fiber.App, db *gorm.DB, sessionStore *session.Store) {
 	})
 
 	app.Get("/register", func(c *fiber.Ctx) error {
+		if getCurrentUser(c, sessionStore, db) != nil {
+			flash(c, "Cannot register, please logout first", "danger", sessionStore)
+			return c.Redirect("/")
+		}
 		return c.Render("register", prepareTemplateData(c, nil, sessionStore))
 	})
 
 	app.Get("/login", func(c *fiber.Ctx) error {
+		if getCurrentUser(c, sessionStore, db) != nil {
+			flash(c, "Already logged in", "danger", sessionStore)
+			return c.Redirect("/")
+		}
 		return c.Render("login", prepareTemplateData(c, nil, sessionStore))
 	})
 
@@ -142,6 +150,10 @@ func setupRoutes(app *fiber.App, db *gorm.DB, sessionStore *session.Store) {
 	})
 
 	app.Get("/logout", func(c *fiber.Ctx) error {
+		if getCurrentUser(c, sessionStore, db) == nil {
+			flash(c, "Can't log out, user not logged in", "danger", sessionStore)
+			return c.Redirect("/")
+		}
 		sess, err := sessionStore.Get(c)
 		if err != nil {
 			return err
