@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/gob"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -29,7 +30,8 @@ func main() {
 
 	// Create a Fiber app with the configured engine
 	app := fiber.New(fiber.Config{
-		Views: engine,
+		Views:             engine,
+		PassLocalsToViews: true,
 	})
 
 	app.Use(logger.New())
@@ -44,6 +46,8 @@ func main() {
 	}
 	// Migrate the schema
 	db.AutoMigrate(&User{})
+
+	app.Use(authMiddleware(sessionStore, db))
 
 	// Setup routes
 	setupRoutes(app, db, sessionStore)
@@ -75,6 +79,12 @@ func setupRoutes(app *fiber.App, db *gorm.DB, sessionStore *session.Store) {
 			return err
 		}
 
+		// check length of username and password
+		if len(data.Username) < 5 || len(data.Password) < 5 {
+			flash(c, "Username and Password must be 5 characters or greater", "danger", sessionStore)
+			return c.Render("register", prepareTemplateData(c, nil, sessionStore))
+		}
+
 		// Check if username already exists
 		var user User
 		result := db.Where("username = ?", data.Username).First(&user)
@@ -90,6 +100,59 @@ func setupRoutes(app *fiber.App, db *gorm.DB, sessionStore *session.Store) {
 		flash(c, "Registration successful!", "success", sessionStore)
 
 		// Redirect to the homepage
+		return c.Redirect("/")
+	})
+
+	app.Post("/login", func(c *fiber.Ctx) error {
+		var data struct {
+			Username string `form:"username"`
+			Password string `form:"password"`
+		}
+		if err := c.BodyParser(&data); err != nil {
+			return err
+		}
+
+		// Authenticate user
+		var user User
+		if err := db.Where("username = ? AND password = ?", data.Username, data.Password).First(&user).Error; err != nil {
+			flash(c, "Invalid username or password", "danger", sessionStore)
+			return c.Redirect("/login")
+		}
+
+		// Create session and store only user_id
+		sess, err := sessionStore.Get(c)
+		if err != nil {
+			return err
+		}
+		sess.Set("user_id", user.ID)
+		if err := sess.Save(); err != nil {
+			return err
+		}
+
+		// Optionally set a cookie with session ID, though Fiber does this automatically
+		c.Cookie(&fiber.Cookie{
+			Name:     "session_id",
+			Value:    sess.ID(),
+			Expires:  time.Now().Add(1 * time.Hour),
+			HTTPOnly: true,
+		})
+
+		flash(c, "Login successful!", "success", sessionStore)
+		return c.Redirect("/")
+	})
+
+	app.Get("/logout", func(c *fiber.Ctx) error {
+		sess, err := sessionStore.Get(c)
+		if err != nil {
+			return err
+		}
+		// Destroy the session
+		sess.Destroy()
+
+		// Clear the cookie
+		c.ClearCookie("session_id")
+
+		flash(c, "Logout successful", "success", sessionStore)
 		return c.Redirect("/")
 	})
 
@@ -140,4 +203,55 @@ func flash(c *fiber.Ctx, message string, category string, sessionStore *session.
 		log.Println("Error saving session:", err)
 	}
 	return err
+}
+
+func authMiddleware(sessionStore *session.Store, db *gorm.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		log.Println("Querying user")
+		sess, err := sessionStore.Get(c)
+		if err != nil {
+			log.Println("Error fetching session:", err)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		userID := sess.Get("user_id")
+		if userID == nil {
+			log.Println("user_id is nil")
+			return c.Next()
+		}
+
+		var user User
+		if err := db.First(&user, userID).Error; err != nil {
+			log.Println("User not found:", err)
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		log.Println("User found and set", user.Username)
+
+		c.Locals("user", &user)
+		return c.Next()
+	}
+}
+
+func getCurrentUser(c *fiber.Ctx, sessionStore *session.Store, db *gorm.DB) *User {
+	// Retrieve the session using the Fiber context
+	sess, err := sessionStore.Get(c)
+	if err != nil {
+		log.Println("Error fetching session:", err)
+		return nil
+	}
+
+	// Attempt to retrieve user_id from the session
+	userID, ok := sess.Get("user_id").(uint)
+	if !ok {
+		return nil // No user_id found, or type assertion failed
+	}
+
+	// Retrieve the user from the database based on user_id
+	var user User
+	if err := db.First(&user, userID).Error; err != nil {
+		log.Println("User not found:", err)
+		return nil
+	}
+
+	return &user
 }
