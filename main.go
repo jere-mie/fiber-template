@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/gofiber/template/django/v3"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -101,8 +102,14 @@ func setupRoutes(app *fiber.App, db *gorm.DB, sessionStore *session.Store) {
 			return c.Render("register", prepareTemplateData(c, nil, sessionStore))
 		}
 
-		// Create new user
-		newUser := User{Username: data.Username, Password: data.Password}
+		// Hash the password
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(data.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+
+		// Create new user with hashed password
+		newUser := User{Username: data.Username, Password: string(hashedPassword)}
 		db.Create(&newUser)
 
 		flash(c, "Registration successful!", "success", sessionStore)
@@ -120,9 +127,16 @@ func setupRoutes(app *fiber.App, db *gorm.DB, sessionStore *session.Store) {
 			return err
 		}
 
-		// Authenticate user
+		// Retrieve user by username
 		var user User
-		if err := db.Where("username = ? AND password = ?", data.Username, data.Password).First(&user).Error; err != nil {
+		if err := db.Where("username = ?", data.Username).First(&user).Error; err != nil {
+			flash(c, "Invalid username or password", "danger", sessionStore)
+			return c.Redirect("/login")
+		}
+
+		// Compare hashed password
+		err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(data.Password))
+		if err != nil {
 			flash(c, "Invalid username or password", "danger", sessionStore)
 			return c.Redirect("/login")
 		}
@@ -219,7 +233,6 @@ func flash(c *fiber.Ctx, message string, category string, sessionStore *session.
 
 func authMiddleware(sessionStore *session.Store, db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		log.Println("Querying user")
 		sess, err := sessionStore.Get(c)
 		if err != nil {
 			log.Println("Error fetching session:", err)
@@ -237,7 +250,7 @@ func authMiddleware(sessionStore *session.Store, db *gorm.DB) fiber.Handler {
 			log.Println("User not found:", err)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
-		log.Println("User found and set", user.Username)
+		log.Println("User found and set")
 
 		c.Locals("user", &user)
 		return c.Next()
